@@ -1,0 +1,19 @@
+version: '3'
+services:
+  api:
+    build: .
+    volumes:
+      - ./models:/models
+      - ./data:/data
+    ports:
+      - "5000:5000"
+    environment:
+      - MODEL_DIR=/models
+      - SENSOR_LOG_PATH=/data/sensor_logs/
+
+  # Optional: simulate ESP32 sending image and sensor data
+  simulator:
+    build:
+      context: ./simulation
+    depends_on:
+      - api

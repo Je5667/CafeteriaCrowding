@@ -21,5 +21,17 @@ DETECTION_THRESHOLD = 0.4  # confidence threshold for bounding boxes
 RECEIVER_HOST = "0.0.0.0"
 RECEIVER_PORT = 8000
 
-# --- Chair Mapping (optional for visualization or logic) ---
-CHAIR_NAMES = ["A", "B", "C"]
+# --- Chair Layouts Per Camera (bounding box regions) ---
+# Format: [x1, y1, x2, y2] for each chair area
+
+CHAIR_LAYOUTS = {
+    "cam01": {
+        "chair_A": [[30, 50, 130, 150]],
+        "chair_B": [[140, 50, 240, 150]],
+        "chair_C": [[250, 50, 350, 150]],
+    },
+    "cam02": {
+        "chair_X": [[60, 80, 180, 180]],
+        "chair_Y": [[200, 80, 320, 180]],
+    }
+}
