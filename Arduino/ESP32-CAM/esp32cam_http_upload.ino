@@ -1,0 +1,184 @@
+#include "esp_camera.h"
+#include <WiFi.h>
+#include <HTTPClient.h>
+
+// ===== Wi-Fi 설정 =====
+const char* ssid = "iPhone";           // WiFi 또는 노트북 핫스팟 SSID
+const char* password = "77406879";   // WiFi 비밀번호
+
+// ===== 서버 URL 설정 =====
+// Flask 서버의 '/upload' 엔드포인트 주소 (PC IP 확인 후 수정)
+const char* serverUrl = "http://172.20.10.10:6000/upload";
+
+// ===== ESP32-CAM 핀 매핑 =====
+#define PWDN_GPIO_NUM     32
+#define RESET_GPIO_NUM    -1
+#define XCLK_GPIO_NUM      0
+#define SIOD_GPIO_NUM     26
+#define SIOC_GPIO_NUM     27
+#define Y9_GPIO_NUM       35
+#define Y8_GPIO_NUM       34
+#define Y7_GPIO_NUM       39
+#define Y6_GPIO_NUM       36
+#define Y5_GPIO_NUM       21
+#define Y4_GPIO_NUM       19
+#define Y3_GPIO_NUM       18
+#define Y2_GPIO_NUM        5
+#define VSYNC_GPIO_NUM    25
+#define HREF_GPIO_NUM     23
+#define PCLK_GPIO_NUM     22
+
+// ===== 네트워크 상태 확인 함수 =====
+void printNetworkStatus() {
+  Serial.println("===== Network Status Check =====");
+  
+  // WiFi 상태 코드 출력
+  Serial.print("WiFi status: ");
+  switch (WiFi.status()) {
+    case WL_CONNECTED: Serial.println("Connected"); break;
+    case WL_NO_SSID_AVAIL: Serial.println("SSID not found"); break;
+    case WL_CONNECT_FAILED: Serial.println("Connection failed"); break;
+    case WL_DISCONNECTED: Serial.println("Disconnected"); break;
+    default: Serial.println("Unknown status"); break;
+  }
+
+  // ESP32 IP 주소 출력
+  Serial.print("ESP32 IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  // 서버 연결 테스트
+  WiFiClient testClient;
+  Serial.print("Connecting to server: ");
+  Serial.println(serverUrl);
+  if (testClient.connect("172.20.10.10", 6000)) {
+    Serial.println("✅ Server connection SUCCESS");
+    testClient.stop();
+  } else {
+    Serial.println("❌ Server connection FAILED");
+  }
+  Serial.println("===============================");
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // ===== WiFi 연결 =====
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected!");
+  printNetworkStatus(); // 초기 연결 상태 출력
+
+  // ===== 카메라 설정 =====
+  camera_config_t config;
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.ledc_timer = LEDC_TIMER_0;
+  config.pin_d0 = Y2_GPIO_NUM;
+  config.pin_d1 = Y3_GPIO_NUM;
+  config.pin_d2 = Y4_GPIO_NUM;
+  config.pin_d3 = Y5_GPIO_NUM;
+  config.pin_d4 = Y6_GPIO_NUM;
+  config.pin_d5 = Y7_GPIO_NUM;
+  config.pin_d6 = Y8_GPIO_NUM;
+  config.pin_d7 = Y9_GPIO_NUM;
+  config.pin_xclk = XCLK_GPIO_NUM;
+  config.pin_pclk = PCLK_GPIO_NUM;
+  config.pin_vsync = VSYNC_GPIO_NUM;
+  config.pin_href = HREF_GPIO_NUM;
+  config.pin_sccb_sda = SIOD_GPIO_NUM;
+  config.pin_sccb_scl = SIOC_GPIO_NUM;
+  config.pin_pwdn = PWDN_GPIO_NUM;
+  config.pin_reset = RESET_GPIO_NUM;
+  config.xclk_freq_hz = 20000000;
+  config.pixel_format = PIXFORMAT_JPEG;
+
+  // ===== 카메라 해상도 / 품질 설정 =====
+  if (psramFound()) {
+    config.frame_size = FRAMESIZE_SVGA;
+    config.jpeg_quality = 10;
+    config.fb_count = 2;
+  } else {
+    config.frame_size = FRAMESIZE_CIF;
+    config.jpeg_quality = 12;
+    config.fb_count = 1;
+  }
+
+  // ===== 카메라 초기화 =====
+  esp_err_t err = esp_camera_init(&config);
+  if (err != ESP_OK) {
+    Serial.printf("Camera init failed with error 0x%x", err);
+    return;
+  }
+}
+
+// ===== 메인 루프 =====
+void loop() {
+  if (Serial.available()) {
+    char c = Serial.read();
+
+    // 'n' → 네트워크 상태 확인
+    if (c == 'n') {
+      printNetworkStatus();
+    }
+
+    // 's' → 사진 촬영 & 서버 전송
+    if (c == 's') {
+      Serial.println("Capturing and sending photo...");
+
+      camera_fb_t *fb = esp_camera_fb_get();
+      if (!fb) {
+        Serial.println("Camera capture failed");
+        return;
+      }
+
+      if (WiFi.status() == WL_CONNECTED) {
+        HTTPClient http;
+        http.begin(serverUrl);
+        http.addHeader("Content-Type", "multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW");
+
+        // multipart 시작
+        String bodyStart =
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n"
+          "Content-Disposition: form-data; name=\"camera_id\"\r\n\r\n"
+          "ESP32_CAM_01\r\n"
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n"
+          "Content-Disposition: form-data; name=\"image\"; filename=\"photo.jpg\"\r\n"
+          "Content-Type: image/jpeg\r\n\r\n";
+
+        // multipart 끝
+        String bodyEnd = "\r\n------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n";
+
+        // 바이너리 전송 (String 변환 시 데이터 유실 가능성 있음 → WiFiClient 사용 권장)
+        int totalLen = bodyStart.length() + fb->len + bodyEnd.length();
+        uint8_t *postData = (uint8_t *)malloc(totalLen);
+        if (postData) {
+          memcpy(postData, bodyStart.c_str(), bodyStart.length());
+          memcpy(postData + bodyStart.length(), fb->buf, fb->len);
+          memcpy(postData + bodyStart.length() + fb->len, bodyEnd.c_str(), bodyEnd.length());
+
+          int httpResponseCode = http.POST(postData, totalLen);
+          free(postData);
+
+          if (httpResponseCode > 0) {
+            Serial.printf("HTTP Response code: %d\n", httpResponseCode);
+            Serial.println(http.getString());
+          } else {
+            Serial.print("Error on sending POST: ");
+            Serial.println(httpResponseCode);
+          }
+        } else {
+          Serial.println("Memory allocation failed!");
+        }
+        http.end();
+      } else {
+        Serial.println("WiFi Disconnected");
+      }
+
+      esp_camera_fb_return(fb);
+    }
+  }
+  delay(10);
+}
