@@ -1,5 +1,6 @@
 # app/core/storage.py
 # sends data to server via POST
+# saves data locally to JSOn
 
 import requests
 import json
@@ -25,7 +26,7 @@ def send_to_server(data: dict):
 
 
 # Save to local JSON file (fallback for testing/simulation)
-def save_locally(data: dict, folder="saved_data"):
+def save_locally(data: dict, folder="predict_time"):
     os.makedirs(folder, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = os.path.join(folder, f"data_{timestamp}.json")

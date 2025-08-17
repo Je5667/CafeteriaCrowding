@@ -1,39 +1,85 @@
-# app/run.py
-# stimulates everythign done on Pi
-
-from PIL import Image
-from app.detection.predictor import ChairDetector
-from app.wait_prediction.predict import WaitTimePredictor
-from app.core.data_formatter import format_chair_data
-
+import os
+import shutil
 import time
+from people_detection.headcount import HeadCount
+from people_detection.chair import ChairDetector
+from wait_prediction.predict import WaitTimePredictor
+from core.data_formatter import format_chair_data, format_signal_count
+from core.storage import send_to_server, save_locally
 
-def main():
-    chair_detector = ChairDetector('models/rtdetr_model.pth')
-    wait_predictor = WaitTimePredictor('models/lstm_model.pth')
+# --- Initialize classes ---
+hc = HeadCount(model_path="path/to/your_model.pt")
+cd = ChairDetector(model_path="path/to/your_model.pt")
+wtp = WaitTimePredictor(model_path="path/to/waittime_lstm.pt", device="cpu")
 
-    while True:
-        # Simulate input data
-        chair_image = Image.open('tests/test_image.jpg').convert('RGB')
-        doorway_sensor_json = open('tests/fake_sensor.json').read()
+# --- Define folders ---
+doorcam_folders = ["receive/data/doorcam/in",
+                   "receive/data/doorcam/out",
+                   "receive/data/doorcam/both"]
 
-        # Run chair detection
-        detected_chairs = chair_detector.predict(chair_image)
+chaircam_folder = "receive/data/chaircam"
 
-        # Format chair occupancy data
-        chair_status = format_chair_data(detected_chairs)
+# --- Main loop ---
+while True:
+    total_people = 0
+    total_sitting = 0
 
-        # Run wait time prediction
-        wait_time = wait_predictor.predict(doorway_sensor_json)
+    # ---- Process DoorCam images for HeadCount ----
+    for folder in doorcam_folders:
+        processed_folder = os.path.join(folder, "processed")
+        os.makedirs(processed_folder, exist_ok=True)
 
-        # Print or send structured data
-        output = {
-            'chairs': chair_status,
-            'wait_time_minutes': wait_time,
+        for img_name in os.listdir(folder):
+            img_path = os.path.join(folder, img_name)
+            if os.path.isdir(img_path):
+                continue  # skip folders
+
+            # Run HeadCount
+            raw_count = hc.count_people_in_image(img_path)
+            signed_count = format_signal_count(folder, raw_count)
+            total_people += signed_count
+            print(f"[DoorCam] {img_name}: {signed_count} people, Total={total_people}")
+
+            # Move image to processed
+            shutil.move(img_path, os.path.join(processed_folder, img_name))
+
+    # ---- Process ChairCam images for ChairDetector ----
+    processed_chair_folder = os.path.join(chaircam_folder, "processed")
+    os.makedirs(processed_chair_folder, exist_ok=True)
+
+    for img_name in os.listdir(chaircam_folder):
+        img_path = os.path.join(chaircam_folder, img_name)
+        if os.path.isdir(img_path):
+            continue  # skip folders
+
+        # Run ChairDetector
+        detected_chairs = cd.detect_chairs(img_path)
+        total_sitting += len(detected_chairs)
+
+        # Send chair occupancy to server
+        data = {
+            "camera": img_name[:8],  # e.g., 'chaircam00'
+            "chairs": format_chair_data(detected_chairs)
         }
-        print(output)
+        send_to_server(data)
 
-        time.sleep(1)  # simulate interval
+        # Move image to processed
+        shutil.move(img_path, os.path.join(processed_chair_folder, img_name))
 
-if __name__ == '__main__':
-    main()
+    print(f"Summary this loop: total_people={total_people}, total_sitting={total_sitting}")
+
+    # ---- WaitTime prediction ----
+    standing_people = total_people - total_sitting
+    wait_time, timestamp = wtp.predict(standing_people)
+    print(f"[WaitTime] Predicted: {wait_time:.2f} minutes at {timestamp}")
+
+    # Send wait time
+    data = {
+        "wait_time": wait_time,
+        "timestamp": timestamp
+    }
+    save_locally(data)
+    send_to_server(data)
+
+    # --- Wait before next loop ---
+    time.sleep(1)

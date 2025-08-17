@@ -8,6 +8,10 @@
 
 ## Sample
 # app/detection/__init__.py
+import os
+from .chair import ChairDetector
+# from .utils import  # Import any helper functions here, if applicable
 
-from .predictor import ChairDetector
-from .utils import  # Import any helper functions here, if applicable
+chair.save_folder = "receive/data/chaircam/boxed"
+os.makedirs(chair.save_folder, exist_ok=True)
+
