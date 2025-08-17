@@ -8,9 +8,9 @@ from core.data_formatter import format_chair_data, format_signal_count
 from core.storage import send_to_server, save_locally
 
 # --- Initialize classes ---
-hc = HeadCount(model_path="path/to/your_model.pt")
-cd = ChairDetector(model_path="path/to/your_model.pt")
-wtp = WaitTimePredictor(model_path="path/to/waittime_lstm.pt", device="cpu")
+hc = HeadCount(model_path="CafeteriaCrowding/RaspberryPi/models/person_yolov8n.pt") # "path/to/your_model.pt"
+cd = ChairDetector(model_path="CafeteriaCrowding/RaspberryPi/models/person_yolov8n.pt")
+wtp = WaitTimePredictor(model_path="CafeteriaCrowding/RaspberryPi/models/final_vanilla.pth", device="cpu")
 
 # --- Define folders ---
 doorcam_folders = ["receive/data/doorcam/in",
@@ -70,16 +70,20 @@ while True:
 
     # ---- WaitTime prediction ----
     standing_people = total_people - total_sitting
-    wait_time, timestamp = wtp.predict(standing_people)
-    print(f"[WaitTime] Predicted: {wait_time:.2f} minutes at {timestamp}")
+    travel_times = [5, 10, 15]  # whatever you need
+    predictions, timestamp = wtp.predict(standing_people, travel_times=travel_times)
 
-    # Send wait time
-    data = {
-        "wait_time": wait_time,
-        "timestamp": timestamp
-    }
-    save_locally(data)
-    send_to_server(data)
+    for travel_time, wait_time in predictions.items():
+        print(f"[WaitTime] {travel_time} min travel → Predicted: {wait_time:.2f} minutes at {timestamp}")
+
+    # ---- Sending data to server ----
+        data = {
+            "travel_time": travel_time,
+            "wait_time": wait_time,
+            "timestamp": timestamp
+        }
+        save_locally(data)
+        send_to_server(data)
 
     # --- Wait before next loop ---
     time.sleep(1)

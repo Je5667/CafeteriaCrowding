@@ -4,7 +4,7 @@ import os
 import shutil
 
 class HeadCount:
-    def __init__(self, model_path="path/to/your_model.pt"):
+    def __init__(self, model_path="CafeteriaCrowding/RaspberryPi/models/person_yolov8n.pt"):
         self.model = YOLO(model_path)
 
     def count_people_in_folder(self, folder_path):

@@ -4,7 +4,7 @@ import os
 import string
 
 class ChairDetector:
-    def __init__(self, model_path="path/to/your_model.pt"):
+    def __init__(self, model_path="CafeteriaCrowding/RaspberryPi/models/person_yolov8n.pt"):
         """
         Initialize YOLOv8n model.
         """
