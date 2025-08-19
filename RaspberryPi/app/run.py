@@ -71,15 +71,20 @@ while True:
     # ---- WaitTime prediction ----
     standing_people = total_people - total_sitting
     travel_times = [5, 10, 15]  # whatever you need
-    predictions, timestamp = wtp.predict(standing_people, travel_times=travel_times)
 
-    for travel_time, wait_time in predictions.items():
-        print(f"[WaitTime] {travel_time} min travel → Predicted: {wait_time:.2f} minutes at {timestamp}")
+    # Predict queue wait only
+    queue_waits, timestamp = wtp.predict(standing_people, travel_times=travel_times)
 
-    # ---- Sending data to server ----
+    for travel_time, queue_wait in queue_waits.items():
+        total_wait = queue_wait + travel_time  # compute total wait externally
+
+        print(f"[WaitTime] {travel_time} min travel → Queue wait: {queue_wait:.2f} min, Total wait: {total_wait:.2f} min at {timestamp}")
+
+        # ---- Sending data to server ----
         data = {
             "travel_time": travel_time,
-            "wait_time": wait_time,
+            "queue_wait": queue_wait,      # only the queue waiting time predicted by model
+            "total_wait": total_wait,      # optional
             "timestamp": timestamp
         }
         save_locally(data)

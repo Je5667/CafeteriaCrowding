@@ -1,16 +1,19 @@
 import torch
 from datetime import datetime
-import weather_module
+from .weather_module import get_weather_kma
+from .lstm_model_class import VanillaLSTM
 
 class WaitTimePredictor:
-    def __init__(self, model_path="CafeteriaCrowding/RaspberryPi/models/final_vanilla.pth", device="cpu"):
+    def __init__(self, model_path, device="cpu", input_size=7):
         self.device = device
-        self.model = torch.load(model_path, map_location=device)
-        self.model.eval()
+        self.model = VanillaLSTM(input_size=input_size)   # create model
+        state_dict = torch.load(model_path, map_location=device)
+        self.model.load_state_dict(state_dict)           # load weights
+        self.model.eval() 
 
     def fetch_dynamic_features(self, standing_people):
         timestamp = datetime.now()
-        weather = weather_module.get_weather_kma()
+        weather = get_weather_kma()
         day = timestamp.weekday()
         time_hour = timestamp.hour + timestamp.minute / 60
         return weather["temp"], weather["humidity"], weather["rain"], day, time_hour, timestamp

@@ -1,3 +1,5 @@
+# cam_id 받아와서 사용
+
 from ultralytics import YOLO
 import cv2
 import os
@@ -9,20 +11,23 @@ class ChairDetector:
         Initialize YOLOv8n model.
         """
         self.model = YOLO(model_path)
+        self.save_folder = save_folder
+        os.makedirs(self.save_folder, exist_ok=True)
         # Define chair coordinates per camera
         # Format: cam_id: [ (x1, y1, x2, y2) for each chair ]
         self.chair_coords = {
-            "cam01": [(50, 100, 200, 300), (220, 100, 370, 300)],  # 2 chairs
-            "cam02": [(60, 110, 210, 310), (230, 110, 380, 310), (400,100,550,300)],  # 3 chairs
+            "chaircam00": [(70, 180, 230, 370), (380, 135, 5400, 300)]  # 2 chairs
+           # "cam02": [(60, 110, 210, 310), (230, 110, 380, 310), (400,100,550,300)],  # 3 chairs
             # Add more cameras as needed
         }
+        
 
     def detect_chairs(self, image_path):
         """
         Returns a list of detected chairs (e.g., ['chair_a', 'chair_b'])
         """
         img_name = os.path.basename(image_path)
-        cam_id = img_name[:5]  # assumes first 5 chars are 'cam01', 'cam02', etc.
+        cam_id = img_name.split('_')[0]  # 'chaircam00'  # assumes first 5 chars are 'cam01', 'cam02', etc.
 
         if cam_id not in self.chair_coords:
             print(f"No chair coordinates defined for {cam_id}")
@@ -55,7 +60,7 @@ class ChairDetector:
         # --- Save the image with YOLO boxes ---
         for result in results:
             annotated_img = result.plot()  # draw boxes on image
-            save_path = os.path.join(ChairDetector.save_folder, img_name)
+            save_path = os.path.join(self.save_folder, img_name)
             cv2.imwrite(save_path, annotated_img)
             print(f"[↓] Saved annotated image to {save_path}")
 
