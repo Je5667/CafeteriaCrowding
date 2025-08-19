@@ -38,9 +38,10 @@ def upload():
 
 if __name__ == "__main__":
     # 폴더 기본 생성
-    os.makedirs("data/Doorcam/In", exist_ok=True)
-    os.makedirs("data/Doorcam/Out", exist_ok=True)
-    os.makedirs("data/Doorcam/Both", exist_ok=True)
-    os.makedirs("data/Seat", exist_ok=True)
+    os.makedirs("data/doorcam/in", exist_ok=True)
+    os.makedirs("data/doorcam/out", exist_ok=True)
+    os.makedirs("data/doorcam/both", exist_ok=True)
+    os.makedirs("data/chaircam", exist_ok=True)
     os.makedirs("data/Others", exist_ok=True)
     app.run(host="0.0.0.0", port=5000)
+
