@@ -86,7 +86,7 @@ while True:
 
     # ---- WaitTime prediction ----
     standing_people = total_people - total_sitting
-    travel_times = [4.722, 1.146]  # whatever you need
+    travel_times = [3.9245, 1.146]  # whatever you need
 
     # Predict queue wait only
     queue_waits, timestamp = wtp.predict(standing_people, travel_times=travel_times)
