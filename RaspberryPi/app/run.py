@@ -6,6 +6,7 @@ from people_detection.chair import ChairDetector
 from wait_prediction.predict import WaitTimePredictor
 from core.data_formatter import format_chair_data
 from core.storage import send_to_server, save_locally
+from core.storage import update_firebase_chairs, update_firebase_wait_times
 
 # --- Initialize classes ---
 hc = HeadCount(model_path="/home/electronic/myproject/CafeteriaCrowding/RaspberryPi/models/yolov8n.pt") # "path/to/your_model.pt"
@@ -72,11 +73,7 @@ while True:
         total_sitting += len(detected_chairs)
 
         # Send chair occupancy to server
-        data = {
-            "camera": img_name[:8],  # e.g., 'chaircam00'
-            "chairs": format_chair_data(detected_chairs)
-        }
-        send_to_server(data)
+        update_firebase_chairs(detected_chairs, cam_id, cd)
 
         # Move image to processed
         shutil.move(img_path, os.path.join(processed_chair_folder, img_name))
@@ -96,7 +93,7 @@ while True:
 
         print(f"[WaitTime] {travel_time} min travel → Queue wait: {queue_wait:.2f} min, Total wait: {total_wait:.2f} min at {timestamp}")
 
-        # ---- Sending data to server ----
+        # ---- Saving data locally ----
         data = {
             "travel_time": travel_time,
             "queue_wait": queue_wait,      # only the queue waiting time predicted by model
@@ -104,7 +101,9 @@ while True:
             "timestamp": timestamp.isoformat()
         }
         save_locally(data)
-        send_to_server(data)
+
+        # ---- Sending data to server ----
+        update_firebase_wait_times(queue_waits)
 
     # --- Wait before next loop ---
     time.sleep(5)
