@@ -65,5 +65,3 @@ class ChairDetector:
             print(f"[↓] Saved annotated image to {save_path}")
 
         return detected_chairs
-    
-

@@ -6,7 +6,7 @@ from people_detection.chair import ChairDetector
 from wait_prediction.predict import WaitTimePredictor
 from core.data_formatter import format_chair_data
 from core.storage import send_to_server, save_locally
-from core.storage import update_firebase_chairs, update_firebase_wait_times
+from server.connect_firebase import update_seat_data, write_timer1, write_timer2
 
 # --- Initialize classes ---
 hc = HeadCount(model_path="/home/electronic/myproject/CafeteriaCrowding/RaspberryPi/models/yolov8n.pt") # "path/to/your_model.pt"
@@ -73,7 +73,15 @@ while True:
         total_sitting += len(detected_chairs)
 
         # Send chair occupancy to server
-        update_firebase_chairs(detected_chairs, cam_id, cd)
+
+        # 2️⃣ Pull cam_id from image name
+        cam_id = os.path.basename(img_path).split('_')[0]
+        coords = cd.chair_coords.get(cam_id, [])
+        if not coords:
+            print(f"No coordinates defined for {cam_id}")
+
+        chair_data = format_chair_data(detected_chairs, coords)
+        update_seat_data(cam_id, chair_data)
 
         # Move image to processed
         shutil.move(img_path, os.path.join(processed_chair_folder, img_name))
@@ -88,22 +96,30 @@ while True:
     # Predict queue wait only
     queue_waits, timestamp = wtp.predict(standing_people, travel_times=travel_times)
 
-    for travel_time, queue_wait in queue_waits.items():
+    timer_functions = [write_timer1, write_timer2]  # expand if you add more timers
+
+    # Loop over predicted travel_time → queue_wait
+    for i, (travel_time, queue_wait) in enumerate(queue_waits.items()):
         total_wait = queue_wait + travel_time  # compute total wait externally
 
-        print(f"[WaitTime] {travel_time} min travel → Queue wait: {queue_wait:.2f} min, Total wait: {total_wait:.2f} min at {timestamp}")
+    # ---- Print info ----
+    print(f"[WaitTime] {travel_time} min travel → Queue wait: {queue_wait:.2f} min, Total wait: {total_wait:.2f} min at {timestamp}")
 
-        # ---- Saving data locally ----
-        data = {
-            "travel_time": travel_time,
-            "queue_wait": queue_wait,      # only the queue waiting time predicted by model
-            "total_wait": total_wait,      # optional
-            "timestamp": timestamp.isoformat()
-        }
-        save_locally(data)
+    # ---- Save locally ----
+    data = {
+        "travel_time": travel_time,
+        "queue_wait": queue_wait,      # only the queue waiting time predicted by model
+        "total_wait": total_wait,      # optional
+        "timestamp": timestamp.isoformat()
+    }
+    save_locally(data)
 
-        # ---- Sending data to server ----
-        update_firebase_wait_times(queue_waits)
+    # ---- Send to Firebase ----
+    # Pick a timer function from the list (cycles if more travel_times than timers)
+    timer_func = timer_functions[i % len(timer_functions)]
+    
+    time.sleep(1.1)  # respect Firebase rate limiter
+    timer_func(queue_wait, travel_time)
 
     # --- Wait before next loop ---
     time.sleep(5)
