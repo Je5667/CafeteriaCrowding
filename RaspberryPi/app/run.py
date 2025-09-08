@@ -5,13 +5,14 @@ from people_detection.headcount import HeadCount
 from people_detection.chair import ChairDetector
 from wait_prediction.predict import WaitTimePredictor
 from core.data_formatter import format_chair_data
-from core.storage import send_to_server, save_locally
-from server.connect_firebase import update_seat_data, write_timer1, write_timer2
+from core.storage import save_locally
+from server.connect_firebase import ConnectFirebase
 
 # --- Initialize classes ---
 hc = HeadCount(model_path="/home/electronic/myproject/CafeteriaCrowding/RaspberryPi/models/yolov8n.pt") # "path/to/your_model.pt"
 cd = ChairDetector(model_path="/home/electronic/myproject/CafeteriaCrowding/RaspberryPi/models/yolov8n.pt")
 wtp = WaitTimePredictor(model_path="/home/electronic/myproject/CafeteriaCrowding/RaspberryPi/models/final_vanilla.pth", device="cpu")
+fdb = ConnectFirebase()
 
 # --- Define folders ---
 doorcam_folders = ["/home/electronic/myproject/CafeteriaCrowding/RaspberryPi/app/receive/data/doorcam/in",
@@ -19,6 +20,9 @@ doorcam_folders = ["/home/electronic/myproject/CafeteriaCrowding/RaspberryPi/app
                    "/home/electronic/myproject/CafeteriaCrowding/RaspberryPi/app/receive/data/doorcam/both"]
 
 chaircam_folder = "/home/electronic/myproject/CafeteriaCrowding/RaspberryPi/app/receive/data/chaircam"
+
+# --- In-memory running total (resets on script restart) ---
+running_total_people = 0
 
 # --- Main loop ---
 while True:
@@ -58,6 +62,10 @@ while True:
                 shutil.move(img_path, os.path.join(processed_folder, img_name))
 
 
+    # ---- Accumulate running total (in-memory) ----
+    running_total_people += total_people
+    print(f"[RunningTotal] After applying loop delta {total_people:+}, running_total_people = {running_total_people}")
+
     # ---- Process ChairCam images for ChairDetector ----
     processed_chair_folder = os.path.join(chaircam_folder, "processed")
     os.makedirs(processed_chair_folder, exist_ok=True)
@@ -81,45 +89,55 @@ while True:
             print(f"No coordinates defined for {cam_id}")
 
         chair_data = format_chair_data(detected_chairs, coords)
-        update_seat_data(cam_id, chair_data)
+        fdb.update_seat_data(cam_id, chair_data)
 
         # Move image to processed
         shutil.move(img_path, os.path.join(processed_chair_folder, img_name))
 
-    print(f"Summary this loop: total_people={total_people}, total_sitting={total_sitting}")
+    print(f"Summary this loop: total_people={total_people}, total_sitting={total_sitting}, running_total={running_total_people}")
 
 
     # ---- WaitTime prediction ----
-    standing_people = total_people - total_sitting
-    travel_times = [3.9245, 1.146]  # whatever you need
+    standing_people = running_total_people - total_sitting
+    travel_times = [3.9245, 1.146]  # add more if needed
 
     # Predict queue wait only
     queue_waits, timestamp = wtp.predict(standing_people, travel_times=travel_times)
 
-    timer_functions = [write_timer1, write_timer2]  # expand if you add more timers
+    # List of timer functions in the same order as travel_times
+    timer_functions = [fdb.write_timer1, fdb.write_timer2]  # expand if you add more timers
 
-    # Loop over predicted travel_time → queue_wait
-    for i, (travel_time, queue_wait) in enumerate(queue_waits.items()):
-        total_wait = queue_wait + travel_time  # compute total wait externally
+    # Loop over predictions in order (travel_time → queue_wait)
+    for i, travel_time in enumerate(travel_times):
+        queue_wait = queue_waits[travel_time]
+        total_wait = queue_wait + travel_time
+        timer_name = f"timer{i+1}"
 
-    # ---- Print info ----
-    print(f"[WaitTime] {travel_time} min travel → Queue wait: {queue_wait:.2f} min, Total wait: {total_wait:.2f} min at {timestamp}")
+        # ---- Send to Firebase ----
+        if i < len(timer_functions):
+            timer_fn = timer_functions[i]
+            ok, _ = timer_fn(queue_wait, travel_time)
 
-    # ---- Save locally ----
-    data = {
-        "travel_time": travel_time,
-        "queue_wait": queue_wait,      # only the queue waiting time predicted by model
-        "total_wait": total_wait,      # optional
-        "timestamp": timestamp.isoformat()
-    }
-    save_locally(data)
+            if ok:
+                print(f"[Firebase] ✅ {timer_name} send success → queue_wait={queue_wait:.2f}, travel_time={travel_time:.2f}")
+            else:
+                print(f"[Firebase] ❌ {timer_name} send failed")
 
-    # ---- Send to Firebase ----
-    # Pick a timer function from the list (cycles if more travel_times than timers)
-    timer_func = timer_functions[i % len(timer_functions)]
-    
-    time.sleep(1.1)  # respect Firebase rate limiter
-    timer_func(queue_wait, travel_time)
+        time.sleep(1.1)  # respect Firebase rate limiter
+
+        # ---- Print info ----
+        print(f"[WaitTime] {travel_time:.2f} min travel → Queue wait: {queue_wait:.2f} min, "
+              f"Total wait: {total_wait:.2f} min at {timestamp}")
+
+        # ---- Save locally ----
+        data = {
+            "timer": timer_name,         
+            "travel_time": travel_time,
+            "queue_wait": queue_wait,    
+            "total_wait": total_wait,    
+            "timestamp": timestamp.isoformat()
+        }
+        save_locally(data)
 
     # --- Wait before next loop ---
     time.sleep(5)

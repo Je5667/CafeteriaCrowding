@@ -6,7 +6,7 @@ from firebase_admin import credentials, db
 
 class ConnectFirebase:
     def __init__(self):
-        self.cred = credentials.Certificate("./firebase_key.json")
+        self.cred = credentials.Certificate("server/firebase_key.json")
         firebase_admin.initialize_app(self.cred, {
             'databaseURL': "https://use-restaurant-default-rtdb.firebaseio.com/",
         })

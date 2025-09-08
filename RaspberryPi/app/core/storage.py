@@ -7,7 +7,7 @@ import json
 import os
 from datetime import datetime
 from server.connect_firebase import ConnectFirebase
-from data_formatter import format_chair_data
+from core.data_formatter import format_chair_data
 
 # Save to local JSON file (fallback for testing/simulation)
 def save_locally(data: dict, folder="predict_time"):

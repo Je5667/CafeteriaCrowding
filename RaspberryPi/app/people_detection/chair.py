@@ -16,7 +16,7 @@ class ChairDetector:
         # Define chair coordinates per camera
         # Format: cam_id: [ (x1, y1, x2, y2) for each chair ]
         self.chair_coords = {
-            "chaircam00": [(82, 84, 146, 127), (122, 176, 187, 220), (215, 276, 273, 323), (274, 106, 351, 151), (466, 314, 589, 388)]  # 2 chairs
+            "chaircam00": [(380, 135, 540, 300), (70, 180, 230, 380)] #[(82, 84, 146, 127), (122, 176, 187, 220), (215, 276, 273, 323), (274, 106, 351, 151), (466, 314, 589, 388)]  # 2 chairs
            # "cam02": [(60, 110, 210, 310), (230, 110, 380, 310), (400,100,550,300)],  # 3 chairs
             # Add more cameras as needed
         }
